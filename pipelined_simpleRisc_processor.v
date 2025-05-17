@@ -36,8 +36,27 @@ module pipelined_simpleRisc_processor(
     reg[31:0] MA_RW_instruction;
     reg[21:0] MA_RW_control_signals;
 
-    parameter isSt = 5'b01111;
-    parameter isRet = 5'b10100;
+    /* 1 */     parameter opcode_add = 5'b00000;
+    /* 2 */     parameter opcode_sub = 5'b00001;
+    /* 3 */     parameter opcode_mul = 5'b00010;
+    /* 4 */     parameter opcode_div = 5'b00011;
+    /* 5 */     parameter opcode_mod = 5'b00100;
+    /* 6 */     parameter opcode_cmp = 5'b00101;
+    /* 7 */     parameter opcode_and = 5'b00110;
+    /* 8 */     parameter opcode_or = 5'b00111;
+    /* 9 */     parameter opcode_not = 5'b01000;
+    /* 10 */    parameter opcode_mov = 5'b01001;
+    /* 11 */    parameter opcode_lsl = 5'b01010;
+    /* 12 */    parameter opcode_lsr = 5'b01011;
+    /* 13 */    parameter opcode_asr = 5'b01100;
+    /* 14 */    parameter opcode_nop = 5'b01101;
+    /* 15 */    parameter opcode_ld = 5'b01110;
+    /* 16 */    parameter opcode_st = 5'b01111;
+    /* 17 */    parameter opcode_beq = 5'b10000;
+    /* 18 */    parameter opcode_bgt = 5'b10001;
+    /* 19 */    parameter opcode_b = 5'b10010;
+    /* 20 */    parameter opcode_call = 5'b10011;
+    /* 21 */    parameter opcode_ret = 5'b10100;
 
     always@(posedge clk1)       // IF stage 
         begin
@@ -79,9 +98,9 @@ module pipelined_simpleRisc_processor(
 
             OF_EX_branchTarget <= {{5{IF_OF_instruction[26]}},IF_OF_instruction[26:0]} + IF_OF_PC;
 
-            OF_EX_A <= (IF_OF_instruction[31:27] == isRet) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
+            OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
 
-            OF_EX_op2 <= (IF_OF_instruction[31:27] == isSt) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
+            OF_EX_op2 <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
 
             if(IF_OF_instruction[26])
                 begin
@@ -92,7 +111,7 @@ module pipelined_simpleRisc_processor(
                     endcase
                 end
             else
-                OF_EX_B <= (IF_OF_instruction[31:27] == isSt) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
+                OF_EX_B <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
         end
 
     always@(posedge clk1)       // EX stage

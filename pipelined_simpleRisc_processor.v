@@ -18,6 +18,7 @@ module pipelined_simpleRisc_processor(
     reg[31:0] OF_EX_op2;
     reg[31:0] OF_EX_instruction;
     reg[21:0] OF_EX_control_signals;
+
     reg flags_E, flags_GT;
 
     // EX_MA pipeline registers
@@ -35,6 +36,13 @@ module pipelined_simpleRisc_processor(
     reg[31:0] MA_RW_aluResult;
     reg[31:0] MA_RW_instruction;
     reg[21:0] MA_RW_control_signals;
+
+    wire M1;
+    wire M2;
+    wire[1:0] M3;
+    wire[1:0] M4;
+    wire M5;
+    wire M6;
 
     /* 1 */     parameter opcode_add = 5'b00000;
     /* 2 */     parameter opcode_sub = 5'b00001;
@@ -58,7 +66,15 @@ module pipelined_simpleRisc_processor(
     /* 20 */    parameter opcode_call = 5'b10011;
     /* 21 */    parameter opcode_ret = 5'b10100;
 
-    always@(posedge clk1)       // IF stage 
+    wire[31:0] alu_A_effective;
+    wire[31:0] alu_B_effective;
+
+    assign alu_A_effective = (M3 == 00) ? OF_EX_A :
+                             (M3 == 01) ? MA_RW_ldResult : EX_MA_aluResult;
+    assign alu_B_effective = (M4 == 00) ? OF_EX_B :
+                             (M4 == 01) ? MA_RW_ldResult : EX_MA_aluResult;
+
+    always@(posedge clk1)       // IF stage
         begin
             if(EX_MA_isBranchTaken)
                 IF_OF_PC <= EX_MA_branch;
@@ -98,48 +114,89 @@ module pipelined_simpleRisc_processor(
 
             OF_EX_branchTarget <= {{5{IF_OF_instruction[26]}},IF_OF_instruction[26:0]} + IF_OF_PC;
 
-            OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
+            // OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
+            if(M1)
+                OF_EX_A <= MA_RW_ldResult;
+            else
+                OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
 
             OF_EX_op2 <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
 
-            if(IF_OF_instruction[26])
-                begin
-                    case(IF_OF_instruction[17:16])
-                        2'b01: OF_EX_B <= {16'b0,IF_OF_instruction[15:0]}; // u-modified immediate
-                        2'b10: OF_EX_B <= {IF_OF_instruction[15:0],16'b0}; // h-modified immediate
-                        default: OF_EX_B <= {{16{IF_OF_instruction[15]}},IF_OF_instruction[15:0]};
-                    endcase
-                end
+            // if(IF_OF_instruction[26])
+            //     begin
+            //         case(IF_OF_instruction[17:16])
+            //             2'b01: OF_EX_B <= {16'b0,IF_OF_instruction[15:0]}; // u-modified immediate
+            //             2'b10: OF_EX_B <= {IF_OF_instruction[15:0],16'b0}; // h-modified immediate
+            //             default: OF_EX_B <= {{16{IF_OF_instruction[15]}},IF_OF_instruction[15:0]};
+            //         endcase
+            //     end
+            // else
+            //     OF_EX_B <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
+            if(M2)
+                OF_EX_B <= MA_RW_ldResult;
             else
-                OF_EX_B <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
+                begin
+                    if(IF_OF_instruction[26])
+                        begin
+                            case(IF_OF_instruction[17:16])
+                                2'b01: OF_EX_B <= {16'b0,IF_OF_instruction[15:0]}; // u-modified immediate
+                                2'b10: OF_EX_B <= {IF_OF_instruction[15:0],16'b0}; // h-modified immediate
+                                default: OF_EX_B <= {{16{IF_OF_instruction[15]}},IF_OF_instruction[15:0]};
+                            endcase
+                        end
+                    else
+                        OF_EX_B <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
+                end
         end
 
     always@(posedge clk1)       // EX stage
         begin
             EX_MA_PC <= OF_EX_PC;
-            EX_MA_op2 <= OF_EX_op2;
+            // EX_MA_op2 <= OF_EX_op2;
             EX_MA_instruction <= OF_EX_instruction;
             EX_MA_control_signals <= OF_EX_control_signals;
 
-            EX_MA_branch <= (OF_EX_control_signals[17]) ? OF_EX_A : OF_EX_branchTarget;
+            EX_MA_op2 <= (M5) ? MA_RW_ldResult : OF_EX_op2;
 
-            EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (OF_EX_A == OF_EX_B)) | (OF_EX_control_signals[18] & (OF_EX_A > OF_EX_B)) | (OF_EX_control_signals[14]);
+            // EX_MA_branch <= (OF_EX_control_signals[17]) ? OF_EX_A : OF_EX_branchTarget;
 
-            flags_E = (OF_EX_control_signals[10]) ? (OF_EX_A==OF_EX_B) : 1'b0;
-            flags_GT = (OF_EX_control_signals[10]) ? (OF_EX_A>OF_EX_B) : 1'b0;
+            // EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (OF_EX_A == OF_EX_B)) | (OF_EX_control_signals[18] & (OF_EX_A > OF_EX_B)) | (OF_EX_control_signals[14]);
 
-            EX_MA_aluResult = (OF_EX_control_signals[12]) ? OF_EX_A + OF_EX_B :
-                              (OF_EX_control_signals[11]) ? OF_EX_A - OF_EX_B :
-                              (OF_EX_control_signals[9]) ? OF_EX_A * OF_EX_B :
-                              (OF_EX_control_signals[8]) ? OF_EX_A / OF_EX_B :
-                              (OF_EX_control_signals[7]) ? OF_EX_A % OF_EX_B :
-                              (OF_EX_control_signals[6]) ? OF_EX_A << OF_EX_B :
-                              (OF_EX_control_signals[5]) ? OF_EX_A >> OF_EX_B :
-                              (OF_EX_control_signals[4]) ? OF_EX_A >>> OF_EX_B :
-                              (OF_EX_control_signals[3]) ? OF_EX_A | OF_EX_B :
-                              (OF_EX_control_signals[2]) ? OF_EX_A & OF_EX_B :
-                              (OF_EX_control_signals[1]) ? ~OF_EX_B :
-                              (OF_EX_control_signals[0]) ? OF_EX_B : 32'b0;
+            // flags_E = (OF_EX_control_signals[10]) ? (OF_EX_A==OF_EX_B) : 1'b0;
+            // flags_GT = (OF_EX_control_signals[10]) ? (OF_EX_A>OF_EX_B) : 1'b0;
+
+            // EX_MA_aluResult = (OF_EX_control_signals[12]) ? OF_EX_A + OF_EX_B :
+            //                   (OF_EX_control_signals[11]) ? OF_EX_A - OF_EX_B :
+            //                   (OF_EX_control_signals[9]) ? OF_EX_A * OF_EX_B :
+            //                   (OF_EX_control_signals[8]) ? OF_EX_A / OF_EX_B :
+            //                   (OF_EX_control_signals[7]) ? OF_EX_A % OF_EX_B :
+            //                   (OF_EX_control_signals[6]) ? OF_EX_A << OF_EX_B :
+            //                   (OF_EX_control_signals[5]) ? OF_EX_A >> OF_EX_B :
+            //                   (OF_EX_control_signals[4]) ? OF_EX_A >>> OF_EX_B :
+            //                   (OF_EX_control_signals[3]) ? OF_EX_A | OF_EX_B :
+            //                   (OF_EX_control_signals[2]) ? OF_EX_A & OF_EX_B :
+            //                   (OF_EX_control_signals[1]) ? ~OF_EX_B :
+            //                   (OF_EX_control_signals[0]) ? OF_EX_B : 32'b0;
+
+            EX_MA_branch <= (OF_EX_control_signals[17]) ? alu_A_effective : OF_EX_branchTarget;
+
+            EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (alu_A_effective == alu_B_effective)) | (OF_EX_control_signals[18] & (alu_A_effective > alu_B_effective)) | (OF_EX_control_signals[14]);
+
+            flags_E = (OF_EX_control_signals[10]) ? (alu_A_effective == alu_B_effective) : 1'b0;
+            flags_GT = (OF_EX_control_signals[10]) ? (alu_A_effective > alu_B_effective) : 1'b0;
+
+            EX_MA_aluResult = (OF_EX_control_signals[12]) ? alu_A_effective + alu_B_effective :
+                              (OF_EX_control_signals[11]) ? alu_A_effective - alu_B_effective :
+                              (OF_EX_control_signals[9]) ? alu_A_effective * alu_B_effective :
+                              (OF_EX_control_signals[8]) ? alu_A_effective / alu_B_effective :
+                              (OF_EX_control_signals[7]) ? alu_A_effective % alu_B_effective :
+                              (OF_EX_control_signals[6]) ? alu_A_effective << alu_B_effective :
+                              (OF_EX_control_signals[5]) ? alu_A_effective >> alu_B_effective :
+                              (OF_EX_control_signals[4]) ? alu_A_effective >>> alu_B_effective :
+                              (OF_EX_control_signals[3]) ? alu_A_effective | alu_B_effective :
+                              (OF_EX_control_signals[2]) ? alu_A_effective & alu_B_effective :
+                              (OF_EX_control_signals[1]) ? ~alu_B_effective :
+                              (OF_EX_control_signals[0]) ? alu_B_effective : 32'b0;
         end
 
     always@(posedge clk2)       // MA stage
@@ -155,7 +212,8 @@ module pipelined_simpleRisc_processor(
                 MA_RW_ldResult <= 32'b0;
 
             if(EX_MA_control_signals[21])
-                data_memory[EX_MA_aluResult] <= EX_MA_op2;
+                // data_memory[EX_MA_aluResult] <= EX_MA_op2;
+                data_memory[EX_MA_aluResult] <= (M6) ? MA_RW_ldResult ? EX_MA_op2;
             else
                 data_memory[EX_MA_aluResult] <= data_memory[EX_MA_aluResult];
         end

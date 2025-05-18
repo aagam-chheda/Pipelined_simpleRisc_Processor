@@ -1,7 +1,33 @@
+`include "forwarding_conflict_detector_on_first_operand.v"
+`include "forwarding_conflict_detector_on_second_operand.v"
+
 module pipelined_simpleRisc_processor(
     input clk1,
     input clk2
 );
+    // Opcodes for the instructions
+    /* 1 */     parameter opcode_add = 5'b00000;
+    /* 2 */     parameter opcode_sub = 5'b00001;
+    /* 3 */     parameter opcode_mul = 5'b00010;
+    /* 4 */     parameter opcode_div = 5'b00011;
+    /* 5 */     parameter opcode_mod = 5'b00100;
+    /* 6 */     parameter opcode_cmp = 5'b00101;
+    /* 7 */     parameter opcode_and = 5'b00110;
+    /* 8 */     parameter opcode_or = 5'b00111;
+    /* 9 */     parameter opcode_not = 5'b01000;
+    /* 10 */    parameter opcode_mov = 5'b01001;
+    /* 11 */    parameter opcode_lsl = 5'b01010;
+    /* 12 */    parameter opcode_lsr = 5'b01011;
+    /* 13 */    parameter opcode_asr = 5'b01100;
+    /* 14 */    parameter opcode_nop = 5'b01101;
+    /* 15 */    parameter opcode_ld = 5'b01110;
+    /* 16 */    parameter opcode_st = 5'b01111;
+    /* 17 */    parameter opcode_beq = 5'b10000;
+    /* 18 */    parameter opcode_bgt = 5'b10001;
+    /* 19 */    parameter opcode_b = 5'b10010;
+    /* 20 */    parameter opcode_call = 5'b10011;
+    /* 21 */    parameter opcode_ret = 5'b10100;
+
     reg[31:0] reg_file [0:15]; // 16 registers
     reg[31:0] instruction_memory [0:1023]; // 1024 instructions
     reg[31:0] data_memory [0:1023]; // 1024 data memory locations
@@ -37,36 +63,74 @@ module pipelined_simpleRisc_processor(
     reg[31:0] MA_RW_aluResult;
     reg[31:0] MA_RW_instruction;
     reg[21:0] MA_RW_control_signals;
-
+    
+    // Forwarding Unit Control Signals Starts
     // Control signals for Forwarding
-    wire M1;
-    wire M2;
-    wire[1:0] M3;
-    wire[1:0] M4;
-    wire M5;
-    wire M6;
+    reg M1;
+    reg M2;
+    reg[1:0] M3;
+    reg[1:0] M4;
+    reg M5;
+    reg M6;
 
-    /* 1 */     parameter opcode_add = 5'b00000;
-    /* 2 */     parameter opcode_sub = 5'b00001;
-    /* 3 */     parameter opcode_mul = 5'b00010;
-    /* 4 */     parameter opcode_div = 5'b00011;
-    /* 5 */     parameter opcode_mod = 5'b00100;
-    /* 6 */     parameter opcode_cmp = 5'b00101;
-    /* 7 */     parameter opcode_and = 5'b00110;
-    /* 8 */     parameter opcode_or = 5'b00111;
-    /* 9 */     parameter opcode_not = 5'b01000;
-    /* 10 */    parameter opcode_mov = 5'b01001;
-    /* 11 */    parameter opcode_lsl = 5'b01010;
-    /* 12 */    parameter opcode_lsr = 5'b01011;
-    /* 13 */    parameter opcode_asr = 5'b01100;
-    /* 14 */    parameter opcode_nop = 5'b01101;
-    /* 15 */    parameter opcode_ld = 5'b01110;
-    /* 16 */    parameter opcode_st = 5'b01111;
-    /* 17 */    parameter opcode_beq = 5'b10000;
-    /* 18 */    parameter opcode_bgt = 5'b10001;
-    /* 19 */    parameter opcode_b = 5'b10010;
-    /* 20 */    parameter opcode_call = 5'b10011;
-    /* 21 */    parameter opcode_ret = 5'b10100;
+    wire forwarding_conflict_on_first_operand_RW_to_MA;
+    wire forwarding_conflict_on_first_operand_RW_to_EX;
+    wire forwarding_conflict_on_first_operand_MA_to_EX;
+    wire forwarding_conflict_on_first_operand_RW_to_OF;
+
+    wire forwarding_conflict_on_second_operand_RW_to_MA;
+    wire forwarding_conflict_on_second_operand_RW_to_EX;
+    wire forwarding_conflict_on_second_operand_MA_to_EX;
+    wire forwarding_conflict_on_second_operand_RW_to_OF;
+
+    forwarding_conflict_detector_on_first_operand forwarding_conflict_detector_on_first_operand_RW_to_MA_detector(EX_MA_instruction, MA_RW_instruction, forwarding_conflict_on_first_operand_RW_to_MA);
+    forwarding_conflict_detector_on_first_operand forwarding_conflict_detector_on_first_operand_RW_to_EX_detector(OF_EX_instruction, MA_RW_instruction, forwarding_conflict_on_first_operand_RW_to_EX);
+    forwarding_conflict_detector_on_first_operand forwarding_conflict_detector_on_first_operand_MA_to_EX_detector(OF_EX_instruction, EX_MA_instruction, forwarding_conflict_on_first_operand_MA_to_EX);
+    forwarding_conflict_detector_on_first_operand forwarding_conflict_detector_on_first_operand_RW_to_OF_detector(IF_OF_instruction, MA_RW_instruction, forwarding_conflict_on_first_operand_RW_to_OF);
+
+    forwarding_conflict_detector_on_second_operand forwarding_conflict_detector_on_second_operand_RW_to_MA_detector(EX_MA_instruction, MA_RW_instruction, forwarding_conflict_on_second_operand_RW_to_MA);
+    forwarding_conflict_detector_on_second_operand forwarding_conflict_detector_on_second_operand_RW_to_EX_detector(OF_EX_instruction, MA_RW_instruction, forwarding_conflict_on_second_operand_RW_to_EX);
+    forwarding_conflict_detector_on_second_operand forwarding_conflict_detector_on_second_operand_MA_to_EX_detector(OF_EX_instruction, EX_MA_instruction, forwarding_conflict_on_second_operand_MA_to_EX);
+    forwarding_conflict_detector_on_second_operand forwarding_conflict_detector_on_second_operand_RW_to_OF_detector(IF_OF_instruction, MA_RW_instruction, forwarding_conflict_on_second_operand_RW_to_OF);
+
+    always@(*)      // Forwarding control signals for OF stage
+        begin
+            if(forwarding_conflict_on_first_operand_RW_to_OF)
+                M1 = 1;
+            else
+                M1 = 0;
+
+            if(forwarding_conflict_on_second_operand_RW_to_OF)
+                M2 = 1;
+            else
+                M2 = 0;
+        end
+
+    always@(*)      // Forwarding control signals for EX stage
+        begin
+            if(forwarding_conflict_on_first_operand_MA_to_EX)
+                M3 = 2'b10;
+            else if(forwarding_conflict_on_first_operand_RW_to_EX)
+                M3 = 2'b01;
+            else
+                M3 = 2'b00;
+
+            if(forwarding_conflict_on_second_operand_MA_to_EX)
+                M4 = 2'b10;
+            else if(forwarding_conflict_on_second_operand_RW_to_EX)
+                M4 = 2'b01;
+            else
+                M4 = 2'b00;
+        end
+
+    always@(*)      // Forwarding control signals for MA stage
+        begin
+            if(forwarding_conflict_on_second_operand_RW_to_MA)
+                M6 = 1;
+            else
+                M6 = 0;
+        end
+    // Forwarding Unit Control Signals Ends
 
     wire[31:0] data_effective;
     assign data_effective = ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b00) ? MA_RW_aluResult :
@@ -120,7 +184,6 @@ module pipelined_simpleRisc_processor(
 
             OF_EX_branchTarget <= {{5{IF_OF_instruction[26]}},IF_OF_instruction[26:0]} + IF_OF_PC;
 
-            // OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
             if(M1)
                 OF_EX_A <= data_effective;
             else
@@ -128,16 +191,6 @@ module pipelined_simpleRisc_processor(
 
             OF_EX_op2 <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
 
-            // if(IF_OF_instruction[26])
-            //     begin
-            //         case(IF_OF_instruction[17:16])
-            //             2'b01: OF_EX_B <= {16'b0,IF_OF_instruction[15:0]}; // u-modified immediate
-            //             2'b10: OF_EX_B <= {IF_OF_instruction[15:0],16'b0}; // h-modified immediate
-            //             default: OF_EX_B <= {{16{IF_OF_instruction[15]}},IF_OF_instruction[15:0]};
-            //         endcase
-            //     end
-            // else
-            //     OF_EX_B <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
             if(M2)
                 OF_EX_B <= data_effective;
             else
@@ -158,31 +211,10 @@ module pipelined_simpleRisc_processor(
     always@(posedge clk1)       // EX stage
         begin
             EX_MA_PC <= OF_EX_PC;
-            // EX_MA_op2 <= OF_EX_op2;
             EX_MA_instruction <= OF_EX_instruction;
             EX_MA_control_signals <= OF_EX_control_signals;
 
             EX_MA_op2 <= (M5) ? MA_RW_ldResult : OF_EX_op2;
-
-            // EX_MA_branch <= (OF_EX_control_signals[17]) ? OF_EX_A : OF_EX_branchTarget;
-
-            // EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (OF_EX_A == OF_EX_B)) | (OF_EX_control_signals[18] & (OF_EX_A > OF_EX_B)) | (OF_EX_control_signals[14]);
-
-            // flags_E <= (OF_EX_control_signals[10]) ? (OF_EX_A==OF_EX_B) : 1'b0;
-            // flags_GT <= (OF_EX_control_signals[10]) ? (OF_EX_A>OF_EX_B) : 1'b0;
-
-            // EX_MA_aluResult <= (OF_EX_control_signals[12]) ? OF_EX_A + OF_EX_B :
-            //                    (OF_EX_control_signals[11]) ? OF_EX_A - OF_EX_B :
-            //                    (OF_EX_control_signals[9]) ? OF_EX_A * OF_EX_B :
-            //                    (OF_EX_control_signals[8]) ? OF_EX_A / OF_EX_B :
-            //                    (OF_EX_control_signals[7]) ? OF_EX_A % OF_EX_B :
-            //                    (OF_EX_control_signals[6]) ? OF_EX_A << OF_EX_B :
-            //                    (OF_EX_control_signals[5]) ? OF_EX_A >> OF_EX_B :
-            //                    (OF_EX_control_signals[4]) ? OF_EX_A >>> OF_EX_B :
-            //                    (OF_EX_control_signals[3]) ? OF_EX_A | OF_EX_B :
-            //                    (OF_EX_control_signals[2]) ? OF_EX_A & OF_EX_B :
-            //                    (OF_EX_control_signals[1]) ? ~OF_EX_B :
-            //                    (OF_EX_control_signals[0]) ? OF_EX_B : 32'b0;
 
             EX_MA_branch <= (OF_EX_control_signals[17]) ? alu_A_after_implementing_forwarding : OF_EX_branchTarget;
 
@@ -218,7 +250,6 @@ module pipelined_simpleRisc_processor(
                 MA_RW_ldResult <= 32'b0;
 
             if(EX_MA_control_signals[21])
-                // data_memory[EX_MA_aluResult] <= EX_MA_op2;
                 data_memory[EX_MA_aluResult] <= (M6) ? data_effective : EX_MA_op2;
             else
                 data_memory[EX_MA_aluResult] <= data_memory[EX_MA_aluResult];

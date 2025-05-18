@@ -68,12 +68,17 @@ module pipelined_simpleRisc_processor(
     /* 20 */    parameter opcode_call = 5'b10011;
     /* 21 */    parameter opcode_ret = 5'b10100;
 
+    wire[31:0] data_effective;
+    assign data_effective = ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b00) ? MA_RW_aluResult :
+                            ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b01) ? MA_RW_ldResult :
+                            ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b10) ? MA_RW_PC + 1 : 32'b0;
+                            
     wire[31:0] alu_A_after_implementing_forwarding;
     wire[31:0] alu_B_after_implementing_forwarding;
     assign alu_A_after_implementing_forwarding = (M3 == 00) ? OF_EX_A :
-                             (M3 == 01) ? MA_RW_ldResult : EX_MA_aluResult;
+                             (M3 == 01) ? data_effective : EX_MA_aluResult;
     assign alu_B_after_implementing_forwarding = (M4 == 00) ? OF_EX_B :
-                             (M4 == 01) ? MA_RW_ldResult : EX_MA_aluResult;
+                             (M4 == 01) ? data_effective : EX_MA_aluResult;
 
     always@(posedge clk1)       // IF stage
         begin
@@ -117,7 +122,7 @@ module pipelined_simpleRisc_processor(
 
             // OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
             if(M1)
-                OF_EX_A <= MA_RW_ldResult;
+                OF_EX_A <= data_effective;
             else
                 OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
 
@@ -134,7 +139,7 @@ module pipelined_simpleRisc_processor(
             // else
             //     OF_EX_B <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
             if(M2)
-                OF_EX_B <= MA_RW_ldResult;
+                OF_EX_B <= data_effective;
             else
                 begin
                     if(IF_OF_instruction[26])
@@ -214,7 +219,7 @@ module pipelined_simpleRisc_processor(
 
             if(EX_MA_control_signals[21])
                 // data_memory[EX_MA_aluResult] <= EX_MA_op2;
-                data_memory[EX_MA_aluResult] <= (M6) ? MA_RW_ldResult : EX_MA_op2;
+                data_memory[EX_MA_aluResult] <= (M6) ? data_effective : EX_MA_op2;
             else
                 data_memory[EX_MA_aluResult] <= data_memory[EX_MA_aluResult];
         end
@@ -224,13 +229,9 @@ module pipelined_simpleRisc_processor(
             if(MA_RW_control_signals[15])
                 begin
                     if(MA_RW_control_signals[13])
-                        reg_file[15] <= ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b00) ? MA_RW_aluResult :
-                                        ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b01) ? MA_RW_ldResult :
-                                        ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b10) ? MA_RW_PC + 1 : 32'b0;
+                        reg_file[15] <= data_effective;
                     else
-                        reg_file[MA_RW_instruction[25:22]] <= ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b00) ? MA_RW_aluResult :
-                                                              ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b01) ? MA_RW_ldResult :
-                                                              ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b10) ? MA_RW_PC + 1 : 32'b0;
+                        reg_file[MA_RW_instruction[25:22]] <= data_effective;
                 end
             else
                 begin

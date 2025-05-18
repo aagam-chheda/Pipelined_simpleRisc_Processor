@@ -1,9 +1,9 @@
 `include "forwarding_conflict_detector_on_first_operand.v"
 `include "forwarding_conflict_detector_on_second_operand.v"
+`include "IF_unit.v"
 
 module pipelined_simpleRisc_processor(
-    input clk1,
-    input clk2
+    input clk
 );
     // Opcodes for the instructions
     /* 1 */     parameter opcode_add = 5'b00000;
@@ -54,8 +54,6 @@ module pipelined_simpleRisc_processor(
     reg[31:0] EX_MA_op2;
     reg[31:0] EX_MA_instruction;
     reg[21:0] EX_MA_control_signals;
-    reg[31:0] EX_MA_branch;
-    reg EX_MA_isBranchTaken;
 
     // MA_RW pipeline registers
     reg[31:0] MA_RW_PC;
@@ -64,8 +62,7 @@ module pipelined_simpleRisc_processor(
     reg[31:0] MA_RW_instruction;
     reg[21:0] MA_RW_control_signals;
     
-    // Forwarding Unit Control Signals Starts
-    // Control signals for Forwarding
+    // Implementing Forwarding Unit Control Signals
     reg M1;
     reg M2;
     reg[1:0] M3;
@@ -92,6 +89,18 @@ module pipelined_simpleRisc_processor(
     forwarding_conflict_detector_on_second_operand forwarding_conflict_detector_on_second_operand_RW_to_EX_detector(OF_EX_instruction, MA_RW_instruction, forwarding_conflict_on_second_operand_RW_to_EX);
     forwarding_conflict_detector_on_second_operand forwarding_conflict_detector_on_second_operand_MA_to_EX_detector(OF_EX_instruction, EX_MA_instruction, forwarding_conflict_on_second_operand_MA_to_EX);
     forwarding_conflict_detector_on_second_operand forwarding_conflict_detector_on_second_operand_RW_to_OF_detector(IF_OF_instruction, MA_RW_instruction, forwarding_conflict_on_second_operand_RW_to_OF);
+
+    wire[31:0] data_effective;
+    assign data_effective = ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b00) ? MA_RW_aluResult :
+                            ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b01) ? MA_RW_ldResult :
+                            ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b10) ? MA_RW_PC + 1 : 32'b0;
+                            
+    wire[31:0] alu_A_after_implementing_forwarding;
+    wire[31:0] alu_B_after_implementing_forwarding;
+    assign alu_A_after_implementing_forwarding = (M3 == 00) ? OF_EX_A :
+                                                 (M3 == 01) ? data_effective : EX_MA_aluResult;
+    assign alu_B_after_implementing_forwarding = (M4 == 00) ? OF_EX_B :
+                                                 (M4 == 01) ? data_effective : EX_MA_aluResult;
 
     always@(*)      // Forwarding control signals for OF stage
         begin
@@ -132,93 +141,134 @@ module pipelined_simpleRisc_processor(
         end
     // Forwarding Unit Control Signals Ends
 
-    wire[31:0] data_effective;
-    assign data_effective = ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b00) ? MA_RW_aluResult :
-                            ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b01) ? MA_RW_ldResult :
-                            ({MA_RW_control_signals[13], MA_RW_control_signals[20]}==2'b10) ? MA_RW_PC + 1 : 32'b0;
-                            
-    wire[31:0] alu_A_after_implementing_forwarding;
-    wire[31:0] alu_B_after_implementing_forwarding;
-    assign alu_A_after_implementing_forwarding = (M3 == 00) ? OF_EX_A :
-                             (M3 == 01) ? data_effective : EX_MA_aluResult;
-    assign alu_B_after_implementing_forwarding = (M4 == 00) ? OF_EX_B :
-                             (M4 == 01) ? data_effective : EX_MA_aluResult;
+    // Implementing Interlock Control Signals
+    reg stall;
+    reg bubble_data_lock;
+    reg bubble_branch_lock;
+    wire stalled_clk;
+    assign stalled_clk = clk & ~stall;
+    wire[4:0] op;
+    assign op = IF_OF_instruction[31:27];
 
-    always@(posedge clk1)       // IF stage
+    always@(*)      // Data-Lock Logic
         begin
-            if(EX_MA_isBranchTaken)
-                IF_OF_PC <= EX_MA_branch;
-            else
-                IF_OF_PC <= IF_OF_PC + 1;
-
-            IF_OF_instruction <= instruction_memory[IF_OF_PC];            
-        end
-
-    always@(posedge clk2)       // OF stage
-        begin
-            OF_EX_PC <= IF_OF_PC;
-            OF_EX_instruction <= IF_OF_instruction;
-
-            /*isSt*/         OF_EX_control_signals[21] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
-            /*isLd*/         OF_EX_control_signals[20] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isBeq*/        OF_EX_control_signals[19] <= IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isBgt*/        OF_EX_control_signals[18] <= IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & IF_OF_instruction[27];
-            /*isRet*/        OF_EX_control_signals[17] <= IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isImmediate*/  OF_EX_control_signals[16] <= IF_OF_instruction[26];
-            /*isWb*/         OF_EX_control_signals[15] <= !(IF_OF_instruction[31] | !IF_OF_instruction[31]&IF_OF_instruction[29]&IF_OF_instruction[27]&(IF_OF_instruction[30]|!IF_OF_instruction[28])) | (IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27]);
-            /*isUBranch*/    OF_EX_control_signals[14] <= IF_OF_instruction[31]&!IF_OF_instruction[30]&(!IF_OF_instruction[29]&IF_OF_instruction[28] | IF_OF_instruction[29]&!IF_OF_instruction[28]&IF_OF_instruction[27]);
-            /*isCall*/       OF_EX_control_signals[13] <= IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
-            /*isAdd*/        OF_EX_control_signals[12] <= (!IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27])|(!IF_OF_instruction[31] & IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28]);
-            /*isSub*/        OF_EX_control_signals[11] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & IF_OF_instruction[27];
-            /*isCmp*/        OF_EX_control_signals[10] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & !IF_OF_instruction[28] & IF_OF_instruction[27];
-            /*isMul*/        OF_EX_control_signals[9] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isDiv*/        OF_EX_control_signals[8] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
-            /*isMod*/        OF_EX_control_signals[7] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isLsl*/        OF_EX_control_signals[6] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isLsr*/        OF_EX_control_signals[5] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
-            /*isAsr*/        OF_EX_control_signals[4] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isOr*/         OF_EX_control_signals[3] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
-            /*isAnd*/        OF_EX_control_signals[2] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isNot*/        OF_EX_control_signals[1] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
-            /*isMov*/        OF_EX_control_signals[0] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & IF_OF_instruction[27];
-
-            OF_EX_branchTarget <= {{5{IF_OF_instruction[26]}},IF_OF_instruction[26:0]} + IF_OF_PC;
-
-            if(M1)
-                OF_EX_A <= data_effective;
-            else
-                OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
-
-            OF_EX_op2 <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
-
-            if(M2)
-                OF_EX_B <= data_effective;
+            if((OF_EX_instruction[31:27] == opcode_ld) && (op == opcode_add || op == opcode_sub || op == opcode_mul || op == opcode_div || op == opcode_mod || op == opcode_cmp || op == opcode_and || op == opcode_or || op == opcode_not || op == opcode_mov || op == opcode_lsl || op == opcode_lsr || op == opcode_asr))
+                begin
+                    stall = 1;
+                    bubble_data_lock = 1;
+                end
             else
                 begin
-                    if(IF_OF_instruction[26])
-                        begin
-                            case(IF_OF_instruction[17:16])
-                                2'b01: OF_EX_B <= {16'b0,IF_OF_instruction[15:0]}; // u-modified immediate
-                                2'b10: OF_EX_B <= {IF_OF_instruction[15:0],16'b0}; // h-modified immediate
-                                default: OF_EX_B <= {{16{IF_OF_instruction[15]}},IF_OF_instruction[15:0]};
-                            endcase
-                        end
+                    stall = 0;
+                    bubble_data_lock = 0;
+                end
+        end
+    always@(*)      // Branch-Lock Logic
+        begin
+            if(isBranchTaken)
+                bubble_branch_lock = 1;
+            else
+                bubble_branch_lock = 0;
+        end
+    // Interlock Control Signals Ends
+
+    wire[31:0] PC;
+    wire isBranchTaken;
+    wire[31:0] branch;
+
+    assign branch = (OF_EX_control_signals[17]) ? alu_A_after_implementing_forwarding : OF_EX_branchTarget;
+    assign isBranchTaken = (OF_EX_control_signals[19] & (alu_A_after_implementing_forwarding == alu_B_after_implementing_forwarding)) | (OF_EX_control_signals[18] & (alu_A_after_implementing_forwarding > alu_B_after_implementing_forwarding)) | (OF_EX_control_signals[14]);
+
+    IF_unit IF_unit(
+        .clk(stalled_clk),
+        .branchPC(branch),
+        .isBranchTaken(isBranchTaken),
+        .PC(PC)
+    );
+
+    always@(posedge stalled_clk)       // IF stage
+        begin
+            if(bubble_branch_lock)
+                begin
+                    IF_OF_PC <= IF_OF_PC;
+                    IF_OF_instruction <= 32'b01101_00000_00000_00000_00000_00000_00;
+                end
+            else
+                begin
+                    IF_OF_PC <= PC;
+                    IF_OF_instruction <= instruction_memory[PC];
+                end           
+        end
+
+    always@(posedge clk)       // OF stage
+        begin
+            if(bubble_branch_lock || bubble_data_lock)
+                begin
+                    OF_EX_instruction <= 32'b01101_00000_00000_00000_00000_00000_00;
+                    OF_EX_control_signals <= 22'b0;
+                end
+            else
+                begin
+                    OF_EX_PC <= IF_OF_PC;
+                    OF_EX_instruction <= IF_OF_instruction;
+
+                    /*isSt*/         OF_EX_control_signals[21] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
+                    /*isLd*/         OF_EX_control_signals[20] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isBeq*/        OF_EX_control_signals[19] <= IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isBgt*/        OF_EX_control_signals[18] <= IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & IF_OF_instruction[27];
+                    /*isRet*/        OF_EX_control_signals[17] <= IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isImmediate*/  OF_EX_control_signals[16] <= IF_OF_instruction[26];
+                    /*isWb*/         OF_EX_control_signals[15] <= !(IF_OF_instruction[31] | !IF_OF_instruction[31]&IF_OF_instruction[29]&IF_OF_instruction[27]&(IF_OF_instruction[30]|!IF_OF_instruction[28])) | (IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27]);
+                    /*isUBranch*/    OF_EX_control_signals[14] <= IF_OF_instruction[31]&!IF_OF_instruction[30]&(!IF_OF_instruction[29]&IF_OF_instruction[28] | IF_OF_instruction[29]&!IF_OF_instruction[28]&IF_OF_instruction[27]);
+                    /*isCall*/       OF_EX_control_signals[13] <= IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
+                    /*isAdd*/        OF_EX_control_signals[12] <= (!IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27])|(!IF_OF_instruction[31] & IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28]);
+                    /*isSub*/        OF_EX_control_signals[11] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & IF_OF_instruction[27];
+                    /*isCmp*/        OF_EX_control_signals[10] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & !IF_OF_instruction[28] & IF_OF_instruction[27];
+                    /*isMul*/        OF_EX_control_signals[9] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isDiv*/        OF_EX_control_signals[8] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
+                    /*isMod*/        OF_EX_control_signals[7] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isLsl*/        OF_EX_control_signals[6] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isLsr*/        OF_EX_control_signals[5] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & !IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
+                    /*isAsr*/        OF_EX_control_signals[4] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isOr*/         OF_EX_control_signals[3] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28] & IF_OF_instruction[27];
+                    /*isAnd*/        OF_EX_control_signals[2] <= !IF_OF_instruction[31] & !IF_OF_instruction[30] & IF_OF_instruction[29] & IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isNot*/        OF_EX_control_signals[1] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & !IF_OF_instruction[27];
+                    /*isMov*/        OF_EX_control_signals[0] <= !IF_OF_instruction[31] & IF_OF_instruction[30] & !IF_OF_instruction[29] & !IF_OF_instruction[28] & IF_OF_instruction[27];
+
+                    OF_EX_branchTarget <= {{5{IF_OF_instruction[26]}},IF_OF_instruction[26:0]} + IF_OF_PC;
+
+                    if(M1)
+                        OF_EX_A <= data_effective;
                     else
-                        OF_EX_B <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
+                        OF_EX_A <= (IF_OF_instruction[31:27] == opcode_ret) ? reg_file[15] : reg_file[IF_OF_instruction[21:18]];
+
+                    OF_EX_op2 <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
+
+                    if(M2)
+                        OF_EX_B <= data_effective;
+                    else
+                        begin
+                            if(IF_OF_instruction[26])
+                                begin
+                                    case(IF_OF_instruction[17:16])
+                                        2'b01: OF_EX_B <= {16'b0,IF_OF_instruction[15:0]}; // u-modified immediate
+                                        2'b10: OF_EX_B <= {IF_OF_instruction[15:0],16'b0}; // h-modified immediate
+                                        default: OF_EX_B <= {{16{IF_OF_instruction[15]}},IF_OF_instruction[15:0]};
+                                    endcase
+                                end
+                            else
+                                OF_EX_B <= (IF_OF_instruction[31:27] == opcode_st) ? reg_file[IF_OF_instruction[25:22]] : reg_file[IF_OF_instruction[17:14]];
+                        end
                 end
         end
 
-    always@(posedge clk1)       // EX stage
+    always@(posedge clk)       // EX stage
         begin
             EX_MA_PC <= OF_EX_PC;
             EX_MA_instruction <= OF_EX_instruction;
             EX_MA_control_signals <= OF_EX_control_signals;
 
             EX_MA_op2 <= (M5) ? MA_RW_ldResult : OF_EX_op2;
-
-            EX_MA_branch <= (OF_EX_control_signals[17]) ? alu_A_after_implementing_forwarding : OF_EX_branchTarget;
-
-            EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (alu_A_after_implementing_forwarding == alu_B_after_implementing_forwarding)) | (OF_EX_control_signals[18] & (alu_A_after_implementing_forwarding > alu_B_after_implementing_forwarding)) | (OF_EX_control_signals[14]);
 
             flags_E <= (OF_EX_control_signals[10]) ? (alu_A_after_implementing_forwarding == alu_B_after_implementing_forwarding) : 1'b0;
             flags_GT <= (OF_EX_control_signals[10]) ? (alu_A_after_implementing_forwarding > alu_B_after_implementing_forwarding) : 1'b0;
@@ -237,7 +287,7 @@ module pipelined_simpleRisc_processor(
                                (OF_EX_control_signals[0]) ? alu_B_after_implementing_forwarding : 32'b0;
         end
 
-    always@(posedge clk2)       // MA stage
+    always@(posedge clk)       // MA stage
         begin
             MA_RW_PC <= EX_MA_PC;
             MA_RW_aluResult <= EX_MA_aluResult;
@@ -255,7 +305,7 @@ module pipelined_simpleRisc_processor(
                 data_memory[EX_MA_aluResult] <= data_memory[EX_MA_aluResult];
         end
 
-    always@(posedge clk1)       // RW stage
+    always@(posedge clk)       // RW stage
         begin
             if(MA_RW_control_signals[15])
                 begin

@@ -19,6 +19,7 @@ module pipelined_simpleRisc_processor(
     reg[31:0] OF_EX_instruction;
     reg[21:0] OF_EX_control_signals;
 
+    // EX stage flags
     reg flags_E, flags_GT;
 
     // EX_MA pipeline registers
@@ -37,6 +38,7 @@ module pipelined_simpleRisc_processor(
     reg[31:0] MA_RW_instruction;
     reg[21:0] MA_RW_control_signals;
 
+    // Control signals for Forwarding
     wire M1;
     wire M2;
     wire[1:0] M3;
@@ -66,12 +68,11 @@ module pipelined_simpleRisc_processor(
     /* 20 */    parameter opcode_call = 5'b10011;
     /* 21 */    parameter opcode_ret = 5'b10100;
 
-    wire[31:0] alu_A_effective;
-    wire[31:0] alu_B_effective;
-
-    assign alu_A_effective = (M3 == 00) ? OF_EX_A :
+    wire[31:0] alu_A_after_implementing_forwarding;
+    wire[31:0] alu_B_after_implementing_forwarding;
+    assign alu_A_after_implementing_forwarding = (M3 == 00) ? OF_EX_A :
                              (M3 == 01) ? MA_RW_ldResult : EX_MA_aluResult;
-    assign alu_B_effective = (M4 == 00) ? OF_EX_B :
+    assign alu_B_after_implementing_forwarding = (M4 == 00) ? OF_EX_B :
                              (M4 == 01) ? MA_RW_ldResult : EX_MA_aluResult;
 
     always@(posedge clk1)       // IF stage
@@ -178,25 +179,25 @@ module pipelined_simpleRisc_processor(
             //                   (OF_EX_control_signals[1]) ? ~OF_EX_B :
             //                   (OF_EX_control_signals[0]) ? OF_EX_B : 32'b0;
 
-            EX_MA_branch <= (OF_EX_control_signals[17]) ? alu_A_effective : OF_EX_branchTarget;
+            EX_MA_branch <= (OF_EX_control_signals[17]) ? alu_A_after_implementing_forwarding : OF_EX_branchTarget;
 
-            EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (alu_A_effective == alu_B_effective)) | (OF_EX_control_signals[18] & (alu_A_effective > alu_B_effective)) | (OF_EX_control_signals[14]);
+            EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (alu_A_after_implementing_forwarding == alu_B_after_implementing_forwarding)) | (OF_EX_control_signals[18] & (alu_A_after_implementing_forwarding > alu_B_after_implementing_forwarding)) | (OF_EX_control_signals[14]);
 
-            flags_E = (OF_EX_control_signals[10]) ? (alu_A_effective == alu_B_effective) : 1'b0;
-            flags_GT = (OF_EX_control_signals[10]) ? (alu_A_effective > alu_B_effective) : 1'b0;
+            flags_E = (OF_EX_control_signals[10]) ? (alu_A_after_implementing_forwarding == alu_B_after_implementing_forwarding) : 1'b0;
+            flags_GT = (OF_EX_control_signals[10]) ? (alu_A_after_implementing_forwarding > alu_B_after_implementing_forwarding) : 1'b0;
 
-            EX_MA_aluResult = (OF_EX_control_signals[12]) ? alu_A_effective + alu_B_effective :
-                              (OF_EX_control_signals[11]) ? alu_A_effective - alu_B_effective :
-                              (OF_EX_control_signals[9]) ? alu_A_effective * alu_B_effective :
-                              (OF_EX_control_signals[8]) ? alu_A_effective / alu_B_effective :
-                              (OF_EX_control_signals[7]) ? alu_A_effective % alu_B_effective :
-                              (OF_EX_control_signals[6]) ? alu_A_effective << alu_B_effective :
-                              (OF_EX_control_signals[5]) ? alu_A_effective >> alu_B_effective :
-                              (OF_EX_control_signals[4]) ? alu_A_effective >>> alu_B_effective :
-                              (OF_EX_control_signals[3]) ? alu_A_effective | alu_B_effective :
-                              (OF_EX_control_signals[2]) ? alu_A_effective & alu_B_effective :
-                              (OF_EX_control_signals[1]) ? ~alu_B_effective :
-                              (OF_EX_control_signals[0]) ? alu_B_effective : 32'b0;
+            EX_MA_aluResult = (OF_EX_control_signals[12]) ? alu_A_after_implementing_forwarding + alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[11]) ? alu_A_after_implementing_forwarding - alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[9]) ? alu_A_after_implementing_forwarding * alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[8]) ? alu_A_after_implementing_forwarding / alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[7]) ? alu_A_after_implementing_forwarding % alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[6]) ? alu_A_after_implementing_forwarding << alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[5]) ? alu_A_after_implementing_forwarding >> alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[4]) ? alu_A_after_implementing_forwarding >>> alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[3]) ? alu_A_after_implementing_forwarding | alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[2]) ? alu_A_after_implementing_forwarding & alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[1]) ? ~alu_B_after_implementing_forwarding :
+                              (OF_EX_control_signals[0]) ? alu_B_after_implementing_forwarding : 32'b0;
         end
 
     always@(posedge clk2)       // MA stage
@@ -213,7 +214,7 @@ module pipelined_simpleRisc_processor(
 
             if(EX_MA_control_signals[21])
                 // data_memory[EX_MA_aluResult] <= EX_MA_op2;
-                data_memory[EX_MA_aluResult] <= (M6) ? MA_RW_ldResult ? EX_MA_op2;
+                data_memory[EX_MA_aluResult] <= (M6) ? MA_RW_ldResult : EX_MA_op2;
             else
                 data_memory[EX_MA_aluResult] <= data_memory[EX_MA_aluResult];
         end

@@ -163,41 +163,41 @@ module pipelined_simpleRisc_processor(
 
             // EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (OF_EX_A == OF_EX_B)) | (OF_EX_control_signals[18] & (OF_EX_A > OF_EX_B)) | (OF_EX_control_signals[14]);
 
-            // flags_E = (OF_EX_control_signals[10]) ? (OF_EX_A==OF_EX_B) : 1'b0;
-            // flags_GT = (OF_EX_control_signals[10]) ? (OF_EX_A>OF_EX_B) : 1'b0;
+            // flags_E <= (OF_EX_control_signals[10]) ? (OF_EX_A==OF_EX_B) : 1'b0;
+            // flags_GT <= (OF_EX_control_signals[10]) ? (OF_EX_A>OF_EX_B) : 1'b0;
 
-            // EX_MA_aluResult = (OF_EX_control_signals[12]) ? OF_EX_A + OF_EX_B :
-            //                   (OF_EX_control_signals[11]) ? OF_EX_A - OF_EX_B :
-            //                   (OF_EX_control_signals[9]) ? OF_EX_A * OF_EX_B :
-            //                   (OF_EX_control_signals[8]) ? OF_EX_A / OF_EX_B :
-            //                   (OF_EX_control_signals[7]) ? OF_EX_A % OF_EX_B :
-            //                   (OF_EX_control_signals[6]) ? OF_EX_A << OF_EX_B :
-            //                   (OF_EX_control_signals[5]) ? OF_EX_A >> OF_EX_B :
-            //                   (OF_EX_control_signals[4]) ? OF_EX_A >>> OF_EX_B :
-            //                   (OF_EX_control_signals[3]) ? OF_EX_A | OF_EX_B :
-            //                   (OF_EX_control_signals[2]) ? OF_EX_A & OF_EX_B :
-            //                   (OF_EX_control_signals[1]) ? ~OF_EX_B :
-            //                   (OF_EX_control_signals[0]) ? OF_EX_B : 32'b0;
+            // EX_MA_aluResult <= (OF_EX_control_signals[12]) ? OF_EX_A + OF_EX_B :
+            //                    (OF_EX_control_signals[11]) ? OF_EX_A - OF_EX_B :
+            //                    (OF_EX_control_signals[9]) ? OF_EX_A * OF_EX_B :
+            //                    (OF_EX_control_signals[8]) ? OF_EX_A / OF_EX_B :
+            //                    (OF_EX_control_signals[7]) ? OF_EX_A % OF_EX_B :
+            //                    (OF_EX_control_signals[6]) ? OF_EX_A << OF_EX_B :
+            //                    (OF_EX_control_signals[5]) ? OF_EX_A >> OF_EX_B :
+            //                    (OF_EX_control_signals[4]) ? OF_EX_A >>> OF_EX_B :
+            //                    (OF_EX_control_signals[3]) ? OF_EX_A | OF_EX_B :
+            //                    (OF_EX_control_signals[2]) ? OF_EX_A & OF_EX_B :
+            //                    (OF_EX_control_signals[1]) ? ~OF_EX_B :
+            //                    (OF_EX_control_signals[0]) ? OF_EX_B : 32'b0;
 
             EX_MA_branch <= (OF_EX_control_signals[17]) ? alu_A_after_implementing_forwarding : OF_EX_branchTarget;
 
             EX_MA_isBranchTaken <= (OF_EX_control_signals[19] & (alu_A_after_implementing_forwarding == alu_B_after_implementing_forwarding)) | (OF_EX_control_signals[18] & (alu_A_after_implementing_forwarding > alu_B_after_implementing_forwarding)) | (OF_EX_control_signals[14]);
 
-            flags_E = (OF_EX_control_signals[10]) ? (alu_A_after_implementing_forwarding == alu_B_after_implementing_forwarding) : 1'b0;
-            flags_GT = (OF_EX_control_signals[10]) ? (alu_A_after_implementing_forwarding > alu_B_after_implementing_forwarding) : 1'b0;
+            flags_E <= (OF_EX_control_signals[10]) ? (alu_A_after_implementing_forwarding == alu_B_after_implementing_forwarding) : 1'b0;
+            flags_GT <= (OF_EX_control_signals[10]) ? (alu_A_after_implementing_forwarding > alu_B_after_implementing_forwarding) : 1'b0;
 
-            EX_MA_aluResult = (OF_EX_control_signals[12]) ? alu_A_after_implementing_forwarding + alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[11]) ? alu_A_after_implementing_forwarding - alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[9]) ? alu_A_after_implementing_forwarding * alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[8]) ? alu_A_after_implementing_forwarding / alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[7]) ? alu_A_after_implementing_forwarding % alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[6]) ? alu_A_after_implementing_forwarding << alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[5]) ? alu_A_after_implementing_forwarding >> alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[4]) ? alu_A_after_implementing_forwarding >>> alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[3]) ? alu_A_after_implementing_forwarding | alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[2]) ? alu_A_after_implementing_forwarding & alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[1]) ? ~alu_B_after_implementing_forwarding :
-                              (OF_EX_control_signals[0]) ? alu_B_after_implementing_forwarding : 32'b0;
+            EX_MA_aluResult <= (OF_EX_control_signals[12]) ? alu_A_after_implementing_forwarding + alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[11]) ? alu_A_after_implementing_forwarding - alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[9]) ? alu_A_after_implementing_forwarding * alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[8]) ? alu_A_after_implementing_forwarding / alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[7]) ? alu_A_after_implementing_forwarding % alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[6]) ? alu_A_after_implementing_forwarding << alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[5]) ? alu_A_after_implementing_forwarding >> alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[4]) ? alu_A_after_implementing_forwarding >>> alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[3]) ? alu_A_after_implementing_forwarding | alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[2]) ? alu_A_after_implementing_forwarding & alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[1]) ? ~alu_B_after_implementing_forwarding :
+                               (OF_EX_control_signals[0]) ? alu_B_after_implementing_forwarding : 32'b0;
         end
 
     always@(posedge clk2)       // MA stage
